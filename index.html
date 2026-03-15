@@ -775,6 +775,7 @@ body.admin-mode .admin-only { display: inline-flex; }
   <div id="entry-screen">
     <h2>Who are you?</h2>
     <p>Enter your name to start picking winners</p>
+    <p id="locked-notice" style="display:none;color:var(--coral);font-size:0.85rem;margin-bottom:0.5rem;">🔒 Ballots are locked — but enter your name to follow the leaderboard!</p>
     <input type="text" id="name-input" placeholder="Your name" maxlength="20" autocomplete="off">
     <br><br>
     <button class="btn btn-primary" id="enter-btn" disabled>Let's Go!</button>
@@ -1225,6 +1226,9 @@ function updateGuestTabs() {
       tab.style.display = state.locked ? '' : 'none';
     }
   });
+  // Show locked notice on entry screen for late arrivals
+  const lockedNotice = document.getElementById('locked-notice');
+  if (lockedNotice) lockedNotice.style.display = state.locked ? '' : 'none';
   // If currently on a hidden tab, switch to ballot
   if (!state.locked) {
     const activePage = document.querySelector('.page.active');
@@ -1474,11 +1478,14 @@ function renderPlayerSwitcher() {
   }
 
   let html = '<span style="font-size:0.8rem;color:var(--text-dim);">Viewing:</span>';
-  state.players.forEach(p => {
+  state.players.forEach((p, i) => {
     const active = p.name === currentPlayerName ? 'btn-primary' : 'btn-secondary';
-    html += `<button class="btn ${active}" onclick="switchPlayer('${p.name}')">${p.emoji} ${p.name}</button>`;
+    html += `<button class="btn ${active}" data-player-idx="${i}">${p.emoji} ${p.name}</button>`;
   });
   container.innerHTML = html;
+  container.querySelectorAll('[data-player-idx]').forEach(btn => {
+    btn.onclick = () => switchPlayer(state.players[parseInt(btn.dataset.playerIdx)].name);
+  });
 }
 
 function switchPlayer(name) {
@@ -1848,6 +1855,8 @@ async function fetchFromSheet() {
     const data = await resp.json();
     if (data.success && data.state) {
       const remote = typeof data.state === 'string' ? JSON.parse(data.state) : data.state;
+      // Track previous winner count to detect new announcements
+      const prevWinnerCount = Object.values(state.winners).filter(w => w != null).length;
       // Merge remote state
       state.winners = remote.winners || state.winners;
       state.locked = remote.locked ?? state.locked;
@@ -1880,6 +1889,12 @@ async function fetchFromSheet() {
             state.players.push(pp);
           }
         });
+      }
+
+      // Fire confetti on guest phones when new winners arrive
+      const newWinnerCount = Object.values(state.winners).filter(w => w != null).length;
+      if (newWinnerCount > prevWinnerCount) {
+        launchConfetti();
       }
 
       saveState();

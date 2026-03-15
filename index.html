@@ -528,6 +528,48 @@ body.admin-mode .admin-only { display: inline-flex; }
   background: var(--bg-card);
 }
 
+/* === LATEST WINNER BANNER === */
+.latest-winner {
+  text-align: center;
+  padding: 0.75rem 1rem;
+  margin: 0 auto;
+  max-width: 800px;
+  animation: bannerSlideIn 0.4s ease-out;
+}
+
+.latest-winner .latest-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  margin-bottom: 0.2rem;
+}
+
+.latest-winner .latest-category {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.latest-winner .latest-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.latest-winner .latest-result {
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+  font-weight: 600;
+}
+
+.latest-winner .latest-result.correct { color: var(--green); }
+.latest-winner .latest-result.wrong { color: var(--coral); }
+
+@keyframes bannerSlideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* === SYNC STATUS === */
 .sync-bar {
   display: none;
@@ -769,6 +811,8 @@ body.admin-mode .admin-only { display: inline-flex; }
   <h1>Oscar Pool 2026</h1>
   <div class="subtitle">Hosted by Matt & Caitlyn</div>
 </div>
+
+<div id="latest-winner-banner" style="display:none;"></div>
 
 <!-- BALLOT PAGE -->
 <div class="page active" id="page-ballot">
@@ -2089,10 +2133,50 @@ function importState() {
 // =============================================
 // RENDER ALL
 // =============================================
+function renderLatestWinner() {
+  const banner = document.getElementById('latest-winner-banner');
+  // Find the most recently revealed category
+  if (!state.revealedCategories || !state.revealedCategories.length) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  // Last revealed category is the most recent winner
+  const latestCatId = state.revealedCategories[state.revealedCategories.length - 1];
+  const winnerId = state.winners[latestCatId];
+  if (!winnerId) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const cat = CATEGORIES.find(c => c.id === latestCatId);
+  if (!cat) { banner.style.display = 'none'; return; }
+  const winnerNom = cat.nominees.find(n => n.id === winnerId);
+  const winnerLabel = winnerNom ? winnerNom.label : winnerId;
+
+  let resultHtml = '';
+  const player = getCurrentPlayer();
+  if (player && player.picks[latestCatId]) {
+    const gotIt = player.picks[latestCatId] === winnerId;
+    resultHtml = gotIt
+      ? '<div class="latest-result correct">✓ You got it!</div>'
+      : '<div class="latest-result wrong">✗ You picked ' + (cat.nominees.find(n => n.id === player.picks[latestCatId])?.label || '?') + '</div>';
+  }
+
+  banner.innerHTML = `<div class="latest-winner">
+    <div class="latest-label">🏆 Latest Winner</div>
+    <div class="latest-category">${cat.name}</div>
+    <div class="latest-name">${winnerLabel}</div>
+    ${resultHtml}
+  </div>`;
+  banner.style.display = 'block';
+}
+
 function renderAll() {
   if (currentPlayerName) renderBallot();
   renderLeaderboard();
   renderResults();
+  renderLatestWinner();
   if (IS_ADMIN) renderAdmin();
 }
 

@@ -1147,7 +1147,7 @@ let state = {
   revealedCategories: []
 };
 
-let currentPlayerName = '';
+let currentPlayerName = localStorage.getItem('oscars2026_player') || '';
 
 function saveState() {
   localStorage.setItem('oscars2026_state', JSON.stringify(state));
@@ -1175,6 +1175,22 @@ function init() {
   setupEntry();
   setupAdmin();
   setupAutoFetch();
+
+  // Auto-restore player session
+  if (currentPlayerName && !IS_ADMIN) {
+    const existing = state.players.find(p => p.name.toLowerCase() === currentPlayerName.toLowerCase());
+    if (existing) {
+      currentPlayerName = existing.name;
+      document.getElementById('entry-screen').style.display = 'none';
+      document.getElementById('ballot-content').style.display = 'block';
+    } else {
+      // Player name stored but not in state (maybe state was wiped), clear it
+      currentPlayerName = '';
+      localStorage.removeItem('oscars2026_player');
+    }
+  }
+
+  updateGuestTabs();
   renderAll();
 
   // Auto-fetch from sheet if not admin
@@ -1203,6 +1219,29 @@ function setupNav() {
 }
 
 // =============================================
+// GUEST TAB VISIBILITY
+// =============================================
+function updateGuestTabs() {
+  if (IS_ADMIN) return;
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(tab => {
+    if (tab.dataset.page === 'leaderboard' || tab.dataset.page === 'results') {
+      tab.style.display = state.locked ? '' : 'none';
+    }
+  });
+  // If currently on a hidden tab, switch to ballot
+  if (!state.locked) {
+    const activePage = document.querySelector('.page.active');
+    if (activePage && (activePage.id === 'page-leaderboard' || activePage.id === 'page-results')) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelector('.tab[data-page="ballot"]').classList.add('active');
+      document.getElementById('page-ballot').classList.add('active');
+    }
+  }
+}
+
+// =============================================
 // ENTRY
 // =============================================
 function setupEntry() {
@@ -1225,6 +1264,7 @@ function enterBallot() {
   if (!name) return;
 
   currentPlayerName = name;
+  localStorage.setItem('oscars2026_player', name);
 
   // Check if player exists
   let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
@@ -1241,6 +1281,7 @@ function enterBallot() {
     publishIfAdmin();
   } else {
     currentPlayerName = player.name; // Use stored casing
+    localStorage.setItem('oscars2026_player', player.name);
   }
 
   document.getElementById('entry-screen').style.display = 'none';
@@ -1537,6 +1578,10 @@ function renderResults() {
     return;
   }
 
+  // For guests: only show all players' picks once ballots are locked; before that, show nothing useful
+  const showAllPlayers = IS_ADMIN || state.locked;
+  const playersToShow = showAllPlayers ? state.players : state.players.filter(p => p.name === currentPlayerName);
+
   let html = '';
 
   CATEGORIES.forEach(cat => {
@@ -1554,7 +1599,7 @@ function renderResults() {
     }
 
     html += `<div class="results-picks">`;
-    state.players.forEach(p => {
+    playersToShow.forEach(p => {
       const pick = p.picks[cat.id];
       const pickNom = cat.nominees.find(n => n.id === pick);
       const pickLabel = pickNom ? pickNom.label : (pick || '—');
@@ -1579,7 +1624,7 @@ function renderResults() {
     html += `<div class="winner-banner"><span class="trophy">🎯</span> Actual: ${sinnersWins}</div>`;
   }
   html += `<div class="results-picks">`;
-  state.players.forEach(p => {
+  playersToShow.forEach(p => {
     const diff = sinnersWins !== null && p.tiebreaker != null ? ` (off by ${Math.abs(p.tiebreaker - sinnersWins)})` : '';
     html += `<span class="result-chip pending">${p.emoji} ${p.name}: ${p.tiebreaker ?? '—'}${diff}</span>`;
   });
@@ -1842,6 +1887,7 @@ async function fetchFromSheet() {
       }
 
       saveState();
+      updateGuestTabs();
       renderAll();
     }
     dot.className = 'sync-dot';

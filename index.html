@@ -838,9 +838,25 @@ body.admin-mode .admin-only { display: inline-flex; }
       </div>
     </details>
   </div>
+  <div id="auto-fetch-section" class="card" style="margin-bottom:1rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+      <h3 style="color:var(--teal);margin:0;">🤖 Auto-Fetch Winners</h3>
+      <span id="auto-fetch-status" style="font-size:0.8rem;color:var(--text-dim);">Idle</span>
+    </div>
+    <p style="color:var(--text-dim);font-size:0.82rem;margin-bottom:0.75rem;">Pulls winners from Wikipedia as they're announced. You can always override manually below.</p>
+    <button class="btn btn-primary" id="auto-fetch-btn" style="width:100%;margin-bottom:0.5rem;background:var(--teal);color:#1a0a2e;">Fetch Winners Now</button>
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+      <label style="font-size:0.82rem;color:var(--text-dim);display:flex;align-items:center;gap:0.4rem;cursor:pointer;">
+        <input type="checkbox" id="auto-fetch-toggle" style="accent-color:var(--teal);width:1rem;height:1rem;">
+        Auto-refresh every 60s
+      </label>
+    </div>
+    <div id="auto-fetch-log" style="font-size:0.72rem;color:var(--text-dim);margin-top:0.5rem;max-height:120px;overflow-y:auto;"></div>
+  </div>
+
   <div class="batch-section" id="batch-section">
     <h3>Mark the Winners</h3>
-    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:0.75rem;">Tap a nominee to mark them as the winner. Use this live during the show, or enter all winners at once after.</p>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:0.75rem;">Tap a nominee to mark them as the winner. Use this live during the show, or enter all winners at once after. Admin always overrides auto-fetch.</p>
     <div id="batch-container"></div>
   </div>
   <div class="admin-section">
@@ -1158,6 +1174,7 @@ function init() {
   setupNav();
   setupEntry();
   setupAdmin();
+  setupAutoFetch();
   renderAll();
 
   // Auto-fetch from sheet if not admin
@@ -1845,6 +1862,128 @@ async function submitToSheet(player) {
     });
   } catch(e) {
     console.log('Failed to submit to sheet:', e);
+  }
+}
+
+// =============================================
+// AUTO-FETCH WINNERS FROM WIKIPEDIA
+// =============================================
+let autoFetchInterval = null;
+
+function setupAutoFetch() {
+  if (!IS_ADMIN) return;
+
+  document.getElementById('auto-fetch-btn').onclick = () => fetchWinnersFromWikipedia();
+
+  document.getElementById('auto-fetch-toggle').onchange = (e) => {
+    if (e.target.checked) {
+      startAutoFetch();
+    } else {
+      stopAutoFetch();
+    }
+  };
+}
+
+function startAutoFetch() {
+  stopAutoFetch();
+  autoFetchInterval = setInterval(fetchWinnersFromWikipedia, 60000);
+  document.getElementById('auto-fetch-status').textContent = 'Auto-refresh ON';
+  document.getElementById('auto-fetch-status').style.color = 'var(--teal)';
+  appendFetchLog('Auto-refresh started (every 60s)');
+}
+
+function stopAutoFetch() {
+  if (autoFetchInterval) {
+    clearInterval(autoFetchInterval);
+    autoFetchInterval = null;
+  }
+  document.getElementById('auto-fetch-status').textContent = 'Idle';
+  document.getElementById('auto-fetch-status').style.color = 'var(--text-dim)';
+}
+
+async function fetchWinnersFromWikipedia() {
+  if (!SHEET_API_URL) {
+    appendFetchLog('❌ Connect Google Sheets first (Live Sync setup)');
+    return;
+  }
+
+  const btn = document.getElementById('auto-fetch-btn');
+  const statusEl = document.getElementById('auto-fetch-status');
+  btn.disabled = true;
+  btn.textContent = 'Fetching...';
+  statusEl.textContent = 'Fetching...';
+  statusEl.style.color = 'var(--gold)';
+
+  try {
+    const resp = await fetch(SHEET_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'fetch_winners' }),
+      headers: { 'Content-Type': 'text/plain' }
+    });
+    const data = await resp.json();
+
+    if (data.success && data.winners) {
+      const fetchedWinners = data.winners;
+      const numFetched = Object.keys(fetchedWinners).length;
+      const prevCount = Object.keys(state.winners).filter(k => state.winners[k]).length;
+
+      // Only apply fetched winners for categories that don't have a winner yet
+      // This lets admin manual picks override auto-fetch
+      let newWinners = 0;
+      for (const catId in fetchedWinners) {
+        if (!state.winners[catId]) {
+          state.winners[catId] = fetchedWinners[catId];
+          if (!state.revealedCategories.includes(catId)) {
+            state.revealedCategories.push(catId);
+          }
+          newWinners++;
+        }
+      }
+
+      if (newWinners > 0) {
+        saveState();
+        publishIfAdmin();
+        renderAll();
+        launchConfetti();
+        appendFetchLog(`🏆 ${newWinners} new winner(s) found! (${numFetched} total on Wikipedia)`);
+      } else if (numFetched > 0) {
+        appendFetchLog(`✅ ${numFetched} winners on Wikipedia, no new ones (all already set)`);
+      } else {
+        appendFetchLog('⏳ No winners announced yet on Wikipedia');
+      }
+
+      if (data.matched && data.matched.length > 0) {
+        appendFetchLog('Matched: ' + data.matched.join(', '));
+      }
+      if (data.raw && data.raw.length > 0) {
+        appendFetchLog('Debug: ' + data.raw.slice(0, 3).join('; '));
+      }
+
+      statusEl.textContent = numFetched > 0 ? `${numFetched} found` : 'No winners yet';
+      statusEl.style.color = numFetched > 0 ? 'var(--green)' : 'var(--text-dim)';
+    } else {
+      appendFetchLog('❌ Fetch failed: ' + (data.error || 'Unknown error'));
+      statusEl.textContent = 'Error';
+      statusEl.style.color = 'var(--coral)';
+    }
+  } catch (e) {
+    appendFetchLog('❌ Network error: ' + e.message);
+    statusEl.textContent = 'Error';
+    statusEl.style.color = 'var(--coral)';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Fetch Winners Now';
+}
+
+function appendFetchLog(msg) {
+  const log = document.getElementById('auto-fetch-log');
+  if (!log) return;
+  const time = new Date().toLocaleTimeString();
+  log.innerHTML = `<div>[${time}] ${msg}</div>` + log.innerHTML;
+  // Keep max 20 entries
+  while (log.children.length > 20) {
+    log.removeChild(log.lastChild);
   }
 }
 

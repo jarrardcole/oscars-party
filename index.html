@@ -824,19 +824,15 @@ body.admin-mode .admin-only { display: inline-flex; }
   <div class="admin-controls" id="admin-controls"></div>
   <div id="admin-sync-section" class="card" style="margin-bottom:1rem;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
-      <h3 style="color:var(--gold);margin:0;">Live Sync</h3>
-      <span id="sync-connected-label" style="font-size:0.8rem;color:var(--text-dim);">Not connected</span>
+      <h3 style="color:var(--gold);margin:0;">📡 Sync</h3>
+      <span id="sync-connected-label" style="font-size:0.8rem;color:var(--green);">Connected</span>
     </div>
-    <p style="color:var(--text-dim);font-size:0.82rem;margin-bottom:0.75rem;">Syncs everyone's picks and results across phones in real time.</p>
+    <p style="color:var(--text-dim);font-size:0.82rem;margin-bottom:0.75rem;">Pushes your changes (lock ballots, mark winners) to everyone's phones. Guests auto-sync every 10 seconds.</p>
     <button class="btn btn-primary" id="sync-now-btn" style="width:100%;margin-bottom:0.5rem;">Sync Now</button>
     <div id="sync-status" style="font-size:0.75rem;color:var(--text-dim);margin-top:0.25rem;"></div>
-    <details style="margin-top:0.75rem;">
-      <summary style="color:var(--text-dim);font-size:0.78rem;cursor:pointer;">Setup (one-time)</summary>
-      <div style="margin-top:0.5rem;">
-        <input type="text" class="sheet-url-input" id="sheet-url-input" placeholder="Paste Google Apps Script URL here">
-        <button class="btn btn-secondary" id="save-url-btn" style="font-size:0.78rem;margin-top:0.4rem;">Save Connection URL</button>
-      </div>
-    </details>
+    <!-- Hidden setup fields kept for backwards compat -->
+    <input type="hidden" id="sheet-url-input">
+    <button id="save-url-btn" style="display:none;"></button>
   </div>
   <div id="auto-fetch-section" class="card" style="margin-bottom:1rem;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
@@ -1138,7 +1134,7 @@ const CATEGORIES = [
 // =============================================
 const urlParams = new URLSearchParams(window.location.search);
 const IS_ADMIN = urlParams.get('mode') === 'admin';
-let SHEET_API_URL = localStorage.getItem('oscars2026_sheet_url') || '';
+let SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbxWT7IM6CeiDsmGjKNmnfkXCcJU1uDLbu--e6v03tiFP6svcTIEd2dZNP523cefkyhy/exec';
 
 let state = {
   players: [],

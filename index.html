@@ -1195,7 +1195,7 @@ function init() {
 
   // Auto-fetch from sheet if not admin
   if (SHEET_API_URL) {
-    document.getElementById('sync-bar').classList.add('visible');
+    if (IS_ADMIN) document.getElementById('sync-bar').classList.add('visible');
     if (!IS_ADMIN) {
       fetchFromSheet();
       setInterval(fetchFromSheet, 10000);

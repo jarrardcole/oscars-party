@@ -529,35 +529,55 @@ body.admin-mode .admin-only { display: inline-flex; }
 }
 
 /* === LATEST WINNER BANNER === */
+#latest-winner-banner {
+  background: linear-gradient(135deg, rgba(245, 200, 66, 0.12), rgba(224, 64, 160, 0.08));
+  border-bottom: 2px solid var(--gold-dim);
+}
 .latest-winner {
   text-align: center;
-  padding: 0.75rem 1rem;
+  padding: 1.25rem 1rem;
   margin: 0 auto;
   max-width: 800px;
-  animation: bannerSlideIn 0.4s ease-out;
+  animation: bannerSlideIn 0.6s ease-out;
 }
 
 .latest-winner .latest-label {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  margin-bottom: 0.2rem;
+  letter-spacing: 0.15em;
+  color: var(--gold);
+  margin-bottom: 0.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.latest-winner .latest-label::before,
+.latest-winner .latest-label::after {
+  content: '';
+  width: 30px;
+  height: 1px;
+  background: var(--gold-dim);
 }
 
 .latest-winner .latest-category {
-  font-size: 0.85rem;
-  color: var(--text-dim);
+  font-size: 1rem;
+  color: var(--text);
+  font-weight: 600;
 }
 
 .latest-winner .latest-name {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--gold);
+  font-size: 1.6rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--gold) 0%, #fff 50%, var(--gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0.25rem 0;
 }
 
 .latest-winner .latest-result {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   margin-top: 0.2rem;
   font-weight: 600;
 }
@@ -566,9 +586,60 @@ body.admin-mode .admin-only { display: inline-flex; }
 .latest-winner .latest-result.wrong { color: var(--coral); }
 
 @keyframes bannerSlideIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* === RESULTS REORDER === */
+.results-category.announced { border-left: 3px solid var(--gold); padding-left: 0.75rem; }
+.results-category.unannounced { opacity: 0.35; }
+.results-divider {
+  text-align: center; color: var(--text-dim); font-size: 0.8rem;
+  margin: 1.5rem 0 1rem; border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 0.75rem; letter-spacing: 0.05em;
+}
+
+/* === LIVE BADGE === */
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--coral);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-left: 0.5rem;
+}
+.live-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+  animation: livePulse 1.5s infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+.progress-counter {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-top: 0.25rem;
+}
+
+/* === LEADERBOARD ENHANCEMENTS === */
+.leader-glow {
+  animation: leaderPulse 2s ease-in-out infinite;
+}
+@keyframes leaderPulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(245, 200, 66, 0.2); }
+  50% { box-shadow: 0 0 25px rgba(245, 200, 66, 0.5); }
+}
+.rank-movement { font-size: 0.75rem; margin-left: 0.25rem; }
+.rank-movement.up { color: var(--green); }
+.rank-movement.down { color: var(--coral); }
 
 /* === SYNC STATUS === */
 .sync-bar {
@@ -809,7 +880,8 @@ body.admin-mode .admin-only { display: inline-flex; }
 
 <div class="hero">
   <h1>Oscar Pool 2026</h1>
-  <div class="subtitle">Hosted by Matt & Caitlyn</div>
+  <div class="subtitle">Hosted by Matt &amp; Caitlyn<span id="live-badge" class="live-badge" style="display:none;">LIVE</span></div>
+  <div id="progress-counter" class="progress-counter" style="display:none;"></div>
 </div>
 
 <div id="latest-winner-banner" style="display:none;"></div>
@@ -1189,6 +1261,7 @@ let state = {
 };
 
 let currentPlayerName = localStorage.getItem('oscars2026_player') || '';
+let previousRanks = {};
 
 function saveState() {
   localStorage.setItem('oscars2026_state', JSON.stringify(state));
@@ -1233,6 +1306,14 @@ function init() {
 
   updateGuestTabs();
   renderAll();
+
+  // Auto-switch admin to Leaderboard when locked (more fun than staring at Ballot tab)
+  if (state.locked && IS_ADMIN && currentPlayerName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelector('.tab[data-page="leaderboard"]').classList.add('active');
+    document.getElementById('page-leaderboard').classList.add('active');
+  }
 
   // Auto-fetch from sheet if not admin
   if (SHEET_API_URL) {
@@ -1580,13 +1661,21 @@ function renderLeaderboard() {
   const announcedCount = Object.values(state.winners).filter(w => w != null).length;
 
   let html = `<div style="text-align:center;margin-bottom:1rem;">
+    <span class="live-badge" style="${state.locked ? '' : 'display:none;'}">LIVE</span>
     <span style="font-size:0.85rem;color:var(--text-dim);">${announcedCount} of ${CATEGORIES.length} categories announced</span>
   </div>`;
 
   scored.forEach((p, i) => {
     const rank = i + 1;
-    html += `<div class="leaderboard-card rank-${rank}">`;
-    html += `<span class="rank-num">${rank}</span>`;
+    const prevRank = previousRanks[p.name];
+    let moveHtml = '';
+    if (prevRank != null && prevRank !== rank) {
+      if (rank < prevRank) moveHtml = `<span class="rank-movement up">▲${prevRank - rank}</span>`;
+      else moveHtml = `<span class="rank-movement down">▼${rank - prevRank}</span>`;
+    }
+    const glowClass = rank === 1 && announcedCount > 0 ? ' leader-glow' : '';
+    html += `<div class="leaderboard-card rank-${rank}${glowClass}">`;
+    html += `<span class="rank-num">${rank}${moveHtml}</span>`;
     html += `<span class="player-emoji">${p.emoji}</span>`;
     html += `<div class="player-info">`;
     html += `<div class="player-name">${p.name}</div>`;
@@ -1595,6 +1684,9 @@ function renderLeaderboard() {
     html += `<div class="player-score">${p.points}</div>`;
     html += `</div>`;
   });
+
+  // Update previous ranks for next render
+  scored.forEach((p, i) => { previousRanks[p.name] = i + 1; });
 
   container.innerHTML = html;
 }
@@ -1631,10 +1723,26 @@ function renderResults() {
 
   let html = '';
 
-  CATEGORIES.forEach(cat => {
-    const winner = state.winners[cat.id];
+  // Sort: revealed categories first (most recent at top), then unannounced
+  const revealedIds = state.revealedCategories || [];
+  const revealed = [...revealedIds].reverse()
+    .map(id => CATEGORIES.find(c => c.id === id))
+    .filter(Boolean);
+  const unrevealed = CATEGORIES.filter(c => !revealedIds.includes(c.id));
+  const orderedCats = [...revealed, ...unrevealed];
+  let addedDivider = false;
 
-    html += `<div class="results-category">`;
+  orderedCats.forEach(cat => {
+    const winner = state.winners[cat.id];
+    const isAnnounced = revealedIds.includes(cat.id);
+
+    // Add divider before first unannounced category
+    if (!isAnnounced && !addedDivider && revealed.length > 0) {
+      html += `<div class="results-divider">— ${unrevealed.length} Remaining Categories —</div>`;
+      addedDivider = true;
+    }
+
+    html += `<div class="results-category ${isAnnounced ? 'announced' : 'unannounced'}">`;
     html += `<div class="results-category-header">`;
     html += `<span class="category-name">${cat.name}</span>`;
     html += `<span class="tier-badge tier-${cat.tier}">${cat.tier} pts</span>`;
@@ -2164,7 +2272,7 @@ function renderLatestWinner() {
   }
 
   banner.innerHTML = `<div class="latest-winner">
-    <div class="latest-label">🏆 Latest Winner</div>
+    <div class="latest-label">✨ JUST ANNOUNCED ✨</div>
     <div class="latest-category">${cat.name}</div>
     <div class="latest-name">${winnerLabel}</div>
     ${resultHtml}
@@ -2178,6 +2286,20 @@ function renderAll() {
   renderResults();
   renderLatestWinner();
   if (IS_ADMIN) renderAdmin();
+
+  // LIVE badge + progress counter in hero
+  const liveBadge = document.getElementById('live-badge');
+  const progressCounter = document.getElementById('progress-counter');
+  if (liveBadge) liveBadge.style.display = state.locked ? '' : 'none';
+  if (progressCounter) {
+    const announced = Object.values(state.winners).filter(w => w != null).length;
+    if (state.locked && announced > 0) {
+      progressCounter.textContent = `${announced} of ${CATEGORIES.length} winners announced`;
+      progressCounter.style.display = '';
+    } else {
+      progressCounter.style.display = 'none';
+    }
+  }
 }
 
 // =============================================

@@ -1688,10 +1688,10 @@ function renderAdmin() {
     <button class="btn btn-secondary" onclick="importState()">Import Data</button>
   `;
 
-  // Batch entry
+  // Batch entry — reversed so early-ceremony categories (shorts, craft) are at top
   const batchContainer = document.getElementById('batch-container');
   let batchHtml = '';
-  CATEGORIES.forEach(cat => {
+  [...CATEGORIES].reverse().forEach(cat => {
     const winner = state.winners[cat.id];
     batchHtml += `<div class="admin-category">`;
     batchHtml += `<div style="font-weight:600;font-size:0.9rem;margin-bottom:0.3rem;">${cat.name} <span class="tier-badge tier-${cat.tier}">${cat.tier}</span></div>`;

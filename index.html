@@ -1855,8 +1855,8 @@ async function fetchFromSheet() {
     const data = await resp.json();
     if (data.success && data.state) {
       const remote = typeof data.state === 'string' ? JSON.parse(data.state) : data.state;
-      // Track previous winner count to detect new announcements
-      const prevWinnerCount = Object.values(state.winners).filter(w => w != null).length;
+      // Snapshot previous winners to detect new announcements
+      const prevWinners = { ...state.winners };
       // Merge remote state
       state.winners = remote.winners || state.winners;
       state.locked = remote.locked ?? state.locked;
@@ -1891,10 +1891,18 @@ async function fetchFromSheet() {
         });
       }
 
-      // Fire confetti on guest phones when new winners arrive
-      const newWinnerCount = Object.values(state.winners).filter(w => w != null).length;
-      if (newWinnerCount > prevWinnerCount) {
-        launchConfetti();
+      // Fire confetti if the current player got a newly announced winner correct
+      const player = getCurrentPlayer();
+      if (player) {
+        for (const catId in state.winners) {
+          if (state.winners[catId] && !prevWinners[catId]) {
+            // New winner just announced — did this player nail it?
+            if (player.picks[catId] === state.winners[catId]) {
+              launchConfetti();
+              break;
+            }
+          }
+        }
       }
 
       saveState();

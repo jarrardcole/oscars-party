@@ -1440,8 +1440,7 @@ function renderBallot() {
 
   CATEGORIES.forEach(cat => {
     const picked = player.picks[cat.id];
-    const winner = state.winners[cat.id];
-    const isRevealed = winner != null;
+    const isRevealed = hasWinner(cat.id);
 
     html += `<div class="category-section" id="cat-${cat.id}">`;
     html += `<div class="category-header">`;
@@ -1455,14 +1454,14 @@ function renderBallot() {
       let icon = '';
       if (picked === nom.id) classes += ' selected';
       if (isRevealed) {
-        if (nom.id === winner && picked === nom.id) {
+        if (isNomineeWinner(cat.id, nom.id) && picked === nom.id) {
           classes += ' correct';
           icon = '<span class="result-icon">✓</span>';
-        } else if (picked === nom.id && nom.id !== winner) {
+        } else if (picked === nom.id && !isNomineeWinner(cat.id, nom.id)) {
           classes += ' incorrect';
           icon = '<span class="result-icon">✗</span>';
         }
-        if (nom.id === winner) {
+        if (isNomineeWinner(cat.id, nom.id)) {
           classes += ' winner-highlight';
         }
       }
@@ -1635,9 +1634,9 @@ function renderLeaderboard() {
     let total = 0;
 
     CATEGORIES.forEach(cat => {
-      if (state.winners[cat.id]) {
+      if (hasWinner(cat.id)) {
         total++;
-        if (p.picks[cat.id] === state.winners[cat.id]) {
+        if (isPickCorrect(cat.id, p.picks[cat.id])) {
           points += cat.tier;
           correct++;
         }
@@ -1658,7 +1657,7 @@ function renderLeaderboard() {
     return 0;
   });
 
-  const announcedCount = Object.values(state.winners).filter(w => w != null).length;
+  const announcedCount = Object.keys(state.winners).filter(k => hasWinner(k)).length;
 
   let html = `<div style="text-align:center;margin-bottom:1rem;">
     <span class="live-badge" style="${state.locked ? '' : 'display:none;'}">LIVE</span>
@@ -1695,12 +1694,16 @@ function countSinnersWins() {
   let count = 0;
   let hasAny = false;
   CATEGORIES.forEach(cat => {
-    if (state.winners[cat.id]) {
+    if (hasWinner(cat.id)) {
       hasAny = true;
-      const winnerNom = cat.nominees.find(n => n.id === state.winners[cat.id]);
-      if (winnerNom && (winnerNom.label.includes('Sinners') || winnerNom.id.includes('sinners'))) {
-        count++;
-      }
+      const w = state.winners[cat.id];
+      const winners = Array.isArray(w) ? w : [w];
+      winners.forEach(wId => {
+        const winnerNom = cat.nominees.find(n => n.id === wId);
+        if (winnerNom && (winnerNom.label.includes('Sinners') || winnerNom.id.includes('sinners'))) {
+          count++;
+        }
+      });
     }
   });
   return hasAny ? count : null;
@@ -1733,7 +1736,6 @@ function renderResults() {
   let addedDivider = false;
 
   orderedCats.forEach(cat => {
-    const winner = state.winners[cat.id];
     const isAnnounced = revealedIds.includes(cat.id);
 
     // Add divider before first unannounced category
@@ -1748,9 +1750,9 @@ function renderResults() {
     html += `<span class="tier-badge tier-${cat.tier}">${cat.tier} pts</span>`;
     html += `</div>`;
 
-    if (winner) {
-      const winnerNom = cat.nominees.find(n => n.id === winner);
-      html += `<div class="winner-banner"><span class="trophy">🏆</span> ${winnerNom ? winnerNom.label : winner}</div>`;
+    if (hasWinner(cat.id)) {
+      const label = getWinnerLabel(cat.id);
+      html += `<div class="winner-banner"><span class="trophy">🏆</span> ${label}</div>`;
     }
 
     html += `<div class="results-picks">`;
@@ -1761,8 +1763,8 @@ function renderResults() {
 
       let cls = 'pending';
       let icon = '';
-      if (winner) {
-        if (pick === winner) { cls = 'correct'; icon = '✓ '; }
+      if (hasWinner(cat.id)) {
+        if (isPickCorrect(cat.id, pick)) { cls = 'correct'; icon = '✓ '; }
         else { cls = 'wrong'; icon = '✗ '; }
       }
 
@@ -1851,17 +1853,16 @@ function renderAdmin() {
   const batchContainer = document.getElementById('batch-container');
   let batchHtml = '';
   [...CATEGORIES].reverse().forEach(cat => {
-    const winner = state.winners[cat.id];
     batchHtml += `<div class="admin-category">`;
     batchHtml += `<div style="font-weight:600;font-size:0.9rem;margin-bottom:0.3rem;">${cat.name} <span class="tier-badge tier-${cat.tier}">${cat.tier}</span></div>`;
     cat.nominees.forEach(nom => {
-      const isWinner = winner === nom.id;
-      batchHtml += `<button class="admin-nominee-btn ${isWinner ? 'is-winner' : ''}" onclick="setWinner('${cat.id}','${nom.id}')">`;
-      batchHtml += isWinner ? '🏆 ' : '';
+      const nomIsWinner = isNomineeWinner(cat.id, nom.id);
+      batchHtml += `<button class="admin-nominee-btn ${nomIsWinner ? 'is-winner' : ''}" onclick="setWinner('${cat.id}','${nom.id}')">`;
+      batchHtml += nomIsWinner ? '🏆 ' : '';
       batchHtml += `${nom.label}</button>`;
     });
-    if (winner) {
-      batchHtml += `<button class="admin-nominee-btn" onclick="clearWinner('${cat.id}')" style="color:var(--coral);">✗ Clear</button>`;
+    if (hasWinner(cat.id)) {
+      batchHtml += `<button class="admin-nominee-btn" onclick="clearWinner('${cat.id}')" style="color:var(--coral);">✗ Clear All</button>`;
     }
     batchHtml += `</div>`;
   });
@@ -1888,10 +1889,9 @@ function renderCheatSheet() {
       const pick = p.picks[cat.id];
       const nom = cat.nominees.find(n => n.id === pick);
       const label = nom ? nom.label : '—';
-      const winner = state.winners[cat.id];
       let style = '';
-      if (winner) {
-        style = pick === winner ? 'color:var(--green);' : 'color:var(--red);opacity:0.6;';
+      if (hasWinner(cat.id)) {
+        style = isPickCorrect(cat.id, pick) ? 'color:var(--green);' : 'color:var(--red);opacity:0.6;';
       }
       html += `<td style="${style}">${label}</td>`;
     });
@@ -1916,9 +1916,64 @@ function toggleLock() {
   renderAll();
 }
 
+// Helper: check if a pick matches the winner(s) for a category
+// Winners can be a string (single) or array (tie)
+function isPickCorrect(catId, pickId) {
+  const w = state.winners[catId];
+  if (!w) return false;
+  if (Array.isArray(w)) return w.includes(pickId);
+  return w === pickId;
+}
+
+// Helper: check if a nominee is a winner (for highlighting)
+function isNomineeWinner(catId, nomId) {
+  const w = state.winners[catId];
+  if (!w) return false;
+  if (Array.isArray(w)) return w.includes(nomId);
+  return w === nomId;
+}
+
+// Helper: get winner label(s) for display
+function getWinnerLabel(catId) {
+  const w = state.winners[catId];
+  if (!w) return null;
+  const cat = CATEGORIES.find(c => c.id === catId);
+  if (!cat) return null;
+  if (Array.isArray(w)) {
+    return w.map(id => {
+      const nom = cat.nominees.find(n => n.id === id);
+      return nom ? nom.label : id;
+    }).join(' & ');
+  }
+  const nom = cat.nominees.find(n => n.id === w);
+  return nom ? nom.label : w;
+}
+
+// Helper: check if a category has any winner set
+function hasWinner(catId) {
+  const w = state.winners[catId];
+  if (Array.isArray(w)) return w.length > 0;
+  return w != null;
+}
+
 function setWinner(catId, nomId) {
-  const prevWinner = state.winners[catId];
-  state.winners[catId] = nomId;
+  const prev = state.winners[catId];
+  const prevArr = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+
+  if (prevArr.includes(nomId)) {
+    // Tapping an existing winner — remove it (toggle off)
+    const newArr = prevArr.filter(id => id !== nomId);
+    state.winners[catId] = newArr.length === 0 ? null : (newArr.length === 1 ? newArr[0] : newArr);
+  } else {
+    // Tapping a new nominee — add to winners (supports ties)
+    if (prev && prev !== nomId) {
+      // Already have a winner — make it an array (tie!)
+      state.winners[catId] = [...prevArr, nomId];
+    } else {
+      state.winners[catId] = nomId;
+    }
+  }
+
   if (!state.revealedCategories.includes(catId)) {
     state.revealedCategories.push(catId);
   }
@@ -1926,8 +1981,8 @@ function setWinner(catId, nomId) {
   publishIfAdmin();
   renderAll();
 
-  // Confetti if new winner
-  if (prevWinner !== nomId) {
+  // Confetti if new winner added
+  if (!prevArr.includes(nomId)) {
     launchConfetti();
   }
 }
@@ -2047,9 +2102,9 @@ async function fetchFromSheet() {
       const player = getCurrentPlayer();
       if (player) {
         for (const catId in state.winners) {
-          if (state.winners[catId] && !prevWinners[catId]) {
+          if (hasWinner(catId) && !prevWinners[catId]) {
             // New winner just announced — did this player nail it?
-            if (player.picks[catId] === state.winners[catId]) {
+            if (isPickCorrect(catId, player.picks[catId])) {
               launchConfetti();
               break;
             }
@@ -2142,7 +2197,7 @@ async function fetchWinnersFromWikipedia() {
     if (data.success && data.winners) {
       const fetchedWinners = data.winners;
       const numFetched = Object.keys(fetchedWinners).length;
-      const prevCount = Object.keys(state.winners).filter(k => state.winners[k]).length;
+      const prevCount = Object.keys(state.winners).filter(k => hasWinner(k)).length;
 
       // Only apply fetched winners for categories that don't have a winner yet
       // This lets admin manual picks override auto-fetch
@@ -2251,21 +2306,19 @@ function renderLatestWinner() {
 
   // Last revealed category is the most recent winner
   const latestCatId = state.revealedCategories[state.revealedCategories.length - 1];
-  const winnerId = state.winners[latestCatId];
-  if (!winnerId) {
+  if (!hasWinner(latestCatId)) {
     banner.style.display = 'none';
     return;
   }
 
   const cat = CATEGORIES.find(c => c.id === latestCatId);
   if (!cat) { banner.style.display = 'none'; return; }
-  const winnerNom = cat.nominees.find(n => n.id === winnerId);
-  const winnerLabel = winnerNom ? winnerNom.label : winnerId;
+  const winnerLabel = getWinnerLabel(latestCatId);
 
   let resultHtml = '';
   const player = getCurrentPlayer();
   if (player && player.picks[latestCatId]) {
-    const gotIt = player.picks[latestCatId] === winnerId;
+    const gotIt = isPickCorrect(latestCatId, player.picks[latestCatId]);
     resultHtml = gotIt
       ? '<div class="latest-result correct">✓ You got it!</div>'
       : '<div class="latest-result wrong">✗ You picked ' + (cat.nominees.find(n => n.id === player.picks[latestCatId])?.label || '?') + '</div>';
